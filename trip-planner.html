@@ -451,6 +451,7 @@ input,textarea{font-family:'DM Sans',sans-serif}
       <div class="flex1"></div>
       <div style="display:flex;gap:6px" id="stat-chips"></div>
       <span id="save-toast" style="font-size:10px;color:var(--teal);font-weight:600;opacity:0;transition:opacity .3s;margin-right:4px"></span>
+      <button id="file-save-btn" onclick="pickSaveFile()" title="Link a save file on your computer" style="width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border2);background:var(--bg2);color:var(--cream4);font-size:13px;transition:all .12s;margin-right:4px" onmouseenter="this.style.color='var(--teal)'" onmouseleave="this.style.color=_fileHandle?'var(--teal)':'var(--cream4)'">💾</button>
       <button onclick="resetData()" title="Reset all data" style="width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border2);background:var(--bg2);color:var(--cream4);font-size:13px;transition:all .12s;margin-right:4px" onmouseenter="this.style.color='var(--red)'" onmouseleave="this.style.color='var(--cream4)'">↺</button>
       <button class="tb-add" onclick="openModal()">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -1485,15 +1486,126 @@ function submitModal(){
 
 // ── PERSISTENCE ────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'tripplanner_v1';
+const IDB_NAME = 'tripplanner_fs';
+const IDB_STORE = 'handles';
+const IDB_KEY = 'saveFile';
+let _fileHandle = null;
 
-function saveData() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ events: EVENTS, locations: LOCATIONS, savedAt: Date.now() }));
-    showSaveToast();
-  } catch(e) { console.warn('Save failed', e); }
+// IndexedDB helpers for persisting the file handle across sessions
+function _idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = e => rej(e);
+  });
+}
+async function _idbGet(key) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = rej;
+  });
+}
+async function _idbSet(key, val) {
+  const db = await _idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+    tx.oncomplete = res;
+    tx.onerror = rej;
+  });
 }
 
-function loadData() {
+// Ask the user to pick (or create) a .json save file
+async function pickSaveFile() {
+  if (!window.showSaveFilePicker) {
+    alert('Your browser does not support the File System Access API.\nUse Chrome or Edge for file saving.');
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'trip-planner-data.json',
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+    });
+    _fileHandle = handle;
+    await _idbSet(IDB_KEY, handle);
+    updateFileBtn();
+    await writeToFile();
+    showSaveToast('✓ File linked');
+  } catch(e) { if (e.name !== 'AbortError') console.warn(e); }
+}
+
+async function writeToFile() {
+  if (!_fileHandle) return false;
+  try {
+    const writable = await _fileHandle.createWritable();
+    await writable.write(JSON.stringify({ events: EVENTS, locations: LOCATIONS, savedAt: Date.now() }, null, 2));
+    await writable.close();
+    return true;
+  } catch(e) {
+    console.warn('File write failed', e);
+    _fileHandle = null;
+    updateFileBtn();
+    return false;
+  }
+}
+
+async function loadFromFile(handle) {
+  try {
+    const file = await handle.getFile();
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (parsed && Array.isArray(parsed.events) && parsed.events.length) {
+      EVENTS = parsed.events;
+      if (Array.isArray(parsed.locations)) LOCATIONS = parsed.locations;
+      return true;
+    }
+  } catch(e) { console.warn('File read failed', e); }
+  return false;
+}
+
+function updateFileBtn() {
+  const btn = document.getElementById('file-save-btn');
+  if (!btn) return;
+  if (_fileHandle) {
+    btn.title = 'Saving to: ' + (_fileHandle.name || 'file') + '\nClick to change file';
+    btn.style.color = 'var(--teal)';
+  } else {
+    btn.title = 'Link a save file on your computer';
+    btn.style.color = 'var(--cream4)';
+  }
+}
+
+async function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ events: EVENTS, locations: LOCATIONS, savedAt: Date.now() }));
+  } catch(e) { console.warn('localStorage save failed', e); }
+  const fileSaved = await writeToFile();
+  showSaveToast(fileSaved ? '✓ Saved to file' : '✓ Saved');
+}
+
+async function loadData() {
+  // Try to reconnect to the previously linked file
+  try {
+    const handle = await _idbGet(IDB_KEY);
+    if (handle) {
+      // Request permission silently (may need user gesture on first load)
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        const ok = await loadFromFile(handle);
+        if (ok) { _fileHandle = handle; updateFileBtn(); return true; }
+      } else {
+        // Store handle for later — user will grant permission on first interaction
+        _fileHandle = handle;
+        updateFileBtn();
+      }
+    }
+  } catch(e) { console.warn('File handle restore failed', e); }
+
+  // Fall back to localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return false;
@@ -1507,6 +1619,21 @@ function loadData() {
   return false;
 }
 
+// If permission was deferred, re-request on first user gesture
+async function _maybeReconnectFile() {
+  if (!_fileHandle) return;
+  try {
+    const perm = await _fileHandle.requestPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      await loadFromFile(_fileHandle);
+      render();
+      updateFileBtn();
+    }
+  } catch(e) {}
+  document.removeEventListener('click', _maybeReconnectFile);
+}
+document.addEventListener('click', _maybeReconnectFile, { once: true });
+
 function resetData() {
   if (!confirm('Reset all data to defaults? This cannot be undone.')) return;
   localStorage.removeItem(STORAGE_KEY);
@@ -1514,11 +1641,11 @@ function resetData() {
 }
 
 let toastTimer = null;
-function showSaveToast() {
+function showSaveToast(msg = '✓ Saved') {
   const toast = document.getElementById('save-toast');
   if (!toast) return;
   toast.style.opacity = '1';
-  toast.textContent = '✓ Saved';
+  toast.textContent = msg;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 1800);
 }
