@@ -1239,9 +1239,10 @@ function renderPanelBody(){
             <div class="doc-size">${d.size}</div>
           </div>
         </div>`).join('')}
-      <button class="upload-btn">
+      <div id="doc-add-area"></div>
+      <button class="upload-btn" onclick="showDocInput()">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        Upload or link document
+        Add link or document name
       </button>
     </div>`;
   } else {
@@ -1295,6 +1296,30 @@ function confirmPack(){
   const e=state.selectedEvent;
   e.packing.push({id:'p'+Date.now(),label:inp.value.trim(),done:false});
   saveData(); renderPanel(); renderStats();
+}
+
+function showDocInput(){
+  const area=document.getElementById('doc-add-area');
+  if(!area) return;
+  area.innerHTML=`<div style="margin-bottom:8px">
+    <div class="add-input-row" style="margin-bottom:6px">
+      <input class="add-input" id="doc-label-input" placeholder="Label (e.g. Booking confirmation)" onkeydown="if(event.key==='Enter')confirmDoc();if(event.key==='Escape')renderPanelBody()">
+    </div>
+    <div class="add-input-row">
+      <input class="add-input" id="doc-url-input" placeholder="URL (optional, e.g. https://...)" onkeydown="if(event.key==='Enter')confirmDoc();if(event.key==='Escape')renderPanelBody()">
+      <button class="confirm-btn" onclick="confirmDoc()">Add</button>
+    </div>
+  </div>`;
+  document.getElementById('doc-label-input').focus();
+}
+function confirmDoc(){
+  const labelInp=document.getElementById('doc-label-input');
+  const urlInp=document.getElementById('doc-url-input');
+  if(!labelInp||!labelInp.value.trim()) return;
+  const url=urlInp?urlInp.value.trim():'';
+  const e=state.selectedEvent;
+  e.docs.push({id:'d'+Date.now(),label:labelInp.value.trim(),size:url||'',type:url?'link':'file'});
+  saveData(); renderPanel();
 }
 
 function toggleTask(eventId,taskId){
