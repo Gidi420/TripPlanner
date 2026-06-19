@@ -1232,13 +1232,13 @@ function renderPanelBody(){
     body.innerHTML=`<div class="tab-content">
       ${e.docs.length===0?'<p style="font-size:12px;color:var(--cream4);font-style:italic">No documents yet</p>':''}
       ${e.docs.map(d=>`
-        <div class="doc-item">
+        <div class="doc-item" onclick="openDoc(EVENTS.find(ev=>ev.id==='${e.id}').docs.find(d=>d.id==='${d.id}'))" style="cursor:pointer">
           <div class="doc-icon">${d.type==='link'?'🔗':'📄'}</div>
           <div style="flex:1;min-width:0">
-            ${d.type==='link'&&d.size?`<a class="doc-label" href="${d.size}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${d.label}</a>`:`<div class="doc-label">${d.label}</div>`}
-            ${d.size&&d.type!=='link'?`<div class="doc-size">${d.size}</div>`:''}
+            <div class="doc-label">${d.label}</div>
+            ${d.size?`<div class="doc-size">${d.size}</div>`:''}
           </div>
-          <button onclick="deleteDoc('${e.id}','${d.id}')" style="background:none;border:none;cursor:pointer;color:var(--cream4);font-size:14px;padding:2px 4px;border-radius:4px;line-height:1" onmouseenter="this.style.color='var(--red)'" onmouseleave="this.style.color='var(--cream4)'">✕</button>
+          <button onclick="event.stopPropagation();deleteDoc('${e.id}','${d.id}')" style="background:none;border:none;cursor:pointer;color:var(--cream4);font-size:14px;padding:2px 4px;border-radius:4px;line-height:1" onmouseenter="this.style.color='var(--red)'" onmouseleave="this.style.color='var(--cream4)'">✕</button>
         </div>`).join('')}
       <div id="doc-add-area"></div>
       <div style="display:flex;gap:6px;margin-top:10px">
@@ -1343,9 +1343,20 @@ function handleDocFile(input){
   if(!input.files||!input.files[0]) return;
   const file=input.files[0];
   const size=file.size>1024*1024?(file.size/1024/1024).toFixed(1)+' MB':(file.size/1024).toFixed(0)+' KB';
-  const e=state.selectedEvent;
-  e.docs.push({id:'d'+Date.now(),label:file.name,size,type:'file'});
-  saveData(); renderPanel();
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    const e=state.selectedEvent;
+    e.docs.push({id:'d'+Date.now(),label:file.name,size,type:'file',dataUrl:ev.target.result});
+    saveData(); renderPanel();
+  };
+  reader.readAsDataURL(file);
+}
+function openDoc(d){
+  if(d.type==='link'&&d.size) return window.open(d.size,'_blank','noopener');
+  if(d.dataUrl){
+    const a=document.createElement('a');
+    a.href=d.dataUrl; a.download=d.label; a.click();
+  }
 }
 
 function toggleTask(eventId,taskId){
