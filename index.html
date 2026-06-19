@@ -1177,7 +1177,7 @@ function renderPanel(){
     </div>
     <div class="panel-tabs">
       ${tabs.map(t=>`
-        <button class="ptab${panelTab===t.key?' active':''}" onclick="setPanelTab('${t.key}')">
+        <button class="ptab${panelTab===t.key?' active':''}" data-tab="${t.key}" onclick="setPanelTab('${t.key}')">
           ${t.label}
           ${t.count?`<span class="tab-badge">${t.count}</span>`:''}
         </button>`).join('')}
@@ -1235,15 +1235,23 @@ function renderPanelBody(){
         <div class="doc-item">
           <div class="doc-icon">${d.type==='link'?'🔗':'📄'}</div>
           <div style="flex:1;min-width:0">
-            <div class="doc-label">${d.label}</div>
-            <div class="doc-size">${d.size}</div>
+            ${d.type==='link'&&d.size?`<a class="doc-label" href="${d.size}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${d.label}</a>`:`<div class="doc-label">${d.label}</div>`}
+            ${d.size&&d.type!=='link'?`<div class="doc-size">${d.size}</div>`:''}
           </div>
+          <button onclick="deleteDoc('${e.id}','${d.id}')" style="background:none;border:none;cursor:pointer;color:var(--cream4);font-size:14px;padding:2px 4px;border-radius:4px;line-height:1" onmouseenter="this.style.color='var(--red)'" onmouseleave="this.style.color='var(--cream4)'">✕</button>
         </div>`).join('')}
       <div id="doc-add-area"></div>
-      <button class="upload-btn" onclick="showDocInput()">
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        Add link or document name
-      </button>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="upload-btn" style="flex:1" onclick="showDocInput()">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Add link
+        </button>
+        <button class="upload-btn" style="flex:1" onclick="document.getElementById('doc-file-input').click()">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 3v8M5 6l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Upload file
+        </button>
+      </div>
+      <input type="file" id="doc-file-input" style="display:none" onchange="handleDocFile(this)">
     </div>`;
   } else {
     body.innerHTML=`<div class="tab-content">
@@ -1253,7 +1261,11 @@ function renderPanelBody(){
   }
 }
 
-function setPanelTab(tab){panelTab=tab;renderPanelBody();}
+function setPanelTab(tab){
+  panelTab=tab;
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  renderPanelBody();
+}
 function closePanel(){state.selectedEvent=null;document.getElementById('detail-panel').style.display='none';}
 function deleteEvent(id){
   EVENTS=EVENTS.filter(e=>e.id!==id);
@@ -1319,6 +1331,20 @@ function confirmDoc(){
   const url=urlInp?urlInp.value.trim():'';
   const e=state.selectedEvent;
   e.docs.push({id:'d'+Date.now(),label:labelInp.value.trim(),size:url||'',type:url?'link':'file'});
+  saveData(); renderPanel();
+}
+function deleteDoc(eventId,docId){
+  const e=EVENTS.find(ev=>ev.id===eventId); if(!e) return;
+  e.docs=e.docs.filter(d=>d.id!==docId);
+  if(state.selectedEvent&&state.selectedEvent.id===eventId) state.selectedEvent=e;
+  saveData(); renderPanel();
+}
+function handleDocFile(input){
+  if(!input.files||!input.files[0]) return;
+  const file=input.files[0];
+  const size=file.size>1024*1024?(file.size/1024/1024).toFixed(1)+' MB':(file.size/1024).toFixed(0)+' KB';
+  const e=state.selectedEvent;
+  e.docs.push({id:'d'+Date.now(),label:file.name,size,type:'file'});
   saveData(); renderPanel();
 }
 
