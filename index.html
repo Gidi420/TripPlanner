@@ -1354,9 +1354,19 @@ function handleDocFile(input){
 function openDoc(d){
   if(d.type==='link'&&d.size) return window.open(d.size,'_blank','noopener');
   if(d.dataUrl){
-    const a=document.createElement('a');
-    a.href=d.dataUrl; a.download=d.label;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    try{
+      const arr=d.dataUrl.split(',');
+      const mime=arr[0].match(/:(.*?);/)[1];
+      const bstr=atob(arr[1]);
+      let n=bstr.length; const u8=new Uint8Array(n);
+      while(n--) u8[n]=bstr.charCodeAt(n);
+      const blob=new Blob([u8],{type:mime});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=d.label;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
+    }catch(e){console.error('openDoc',e);}
   }
 }
 
