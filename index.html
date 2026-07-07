@@ -1355,7 +1355,8 @@ function openDoc(d){
   if(d.type==='link'&&d.size) return window.open(d.size,'_blank','noopener');
   if(d.dataUrl){
     const a=document.createElement('a');
-    a.href=d.dataUrl; a.download=d.label; a.click();
+    a.href=d.dataUrl; a.download=d.label;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 }
 
